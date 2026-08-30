@@ -30,7 +30,7 @@ interface UserInfo {
 export default function AuthorizePage() {
   const loadingAuth = useAuthRedirect();
 
-if (loadingAuth) return <LoadingPage />;
+  if (loadingAuth) return <LoadingPage />;
   return (
     <Suspense fallback={<CenteredMessage message="Carregando..." />}>
       <Authorize />
@@ -42,6 +42,7 @@ function Authorize() {
   const params = useSearchParams();
   const client_id = params.get("client_id") ?? "";
   const redirect_uri = params.get("redirect_uri") ?? "";
+  const oauth_complete_url = params.get("oauth_complete_url") ?? "";
 
   const [app, setApp] = useState<AppInfo | null>(null);
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -86,12 +87,21 @@ function Authorize() {
       return;
     }
 
-    if (!app) return;
+    // Se houver a URL completa gerada pelo Django, usamos ela adicionando o confirm=true
+    if (oauth_complete_url) {
+      const targetUrl = new URL(oauth_complete_url);
+      targetUrl.searchParams.set("confirm", "true");
+      window.location.href = targetUrl.toString();
+      return;
+    }
 
-    const backendUrl = new URL("https://api.imlinkey.store/api/v1/oauth/authorize");
+    // Fallback caso a requisição venha diretamente da UI sem oauth_complete_url
+    if (!app) return;
+    const backendUrl = new URL("https://apis.imlinkey.store/api/v1/oauth/authorize/");
     backendUrl.searchParams.set("client_id", client_id);
     backendUrl.searchParams.set("redirect_uri", redirect_uri);
     backendUrl.searchParams.set("response_type", "code");
+    backendUrl.searchParams.set("confirm", "true");
     if (app.scopes.length) backendUrl.searchParams.set("scope", app.scopes.join(" "));
     backendUrl.searchParams.set("state", crypto.randomUUID());
     window.location.href = backendUrl.toString();
@@ -107,7 +117,7 @@ function Authorize() {
         <AppHeader app={app} />
 
         <p className="text-slate-400">Este aplicativo quer acessar os seguintes dados da sua conta:</p>
-        {app.requested_user_data.length > 0 ? (
+        {app.requested_user_data && app.requested_user_data.length > 0 ? (
           <ul className="list-disc list-inside space-y-1 text-slate-200">
             {app.requested_user_data.map((field) => (
               <li key={field} className="capitalize hover:text-sky-400 transition-colors">
@@ -140,7 +150,7 @@ function Authorize() {
   );
 }
 
-// 🔹 Subcomponents
+// 🔹 Componentes Auxiliares
 function AppHeader({ app }: { app: AppInfo }) {
   return (
     <div className="flex items-center gap-4">
@@ -152,7 +162,7 @@ function AppHeader({ app }: { app: AppInfo }) {
         />
       ) : (
         <div className="w-20 h-20 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-400 font-bold text-2xl">
-          {app.name[0].toUpperCase()}
+          {app.name[0]?.toUpperCase() ?? "A"}
         </div>
       )}
       <div className="space-y-1">
@@ -172,7 +182,7 @@ function UserCard({ user }: { user: UserInfo }) {
           <img src={user.avatar_url} alt={user.username} className="w-16 h-16 rounded-full object-cover shadow-md" />
         ) : (
           <div className="w-16 h-16 rounded-full bg-sky-500/20 flex items-center justify-center text-sky-400 font-bold text-xl shadow-md">
-            {user.username[0].toUpperCase()}
+            {user.username[0]?.toUpperCase() ?? "U"}
           </div>
         )}
         <div className="space-y-1 text-slate-200">
@@ -191,7 +201,9 @@ function UserCard({ user }: { user: UserInfo }) {
 function CenteredMessage({ message, isError }: { message: string; isError?: boolean }) {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <span className={isError ? "text-red-500 text-lg font-semibold" : "text-slate-200 text-lg font-medium"}>{message}</span>
+      <span className={isError ? "text-red-500 text-lg font-semibold" : "text-slate-200 text-lg font-medium"}>
+        {message}
+      </span>
     </div>
   );
 }
